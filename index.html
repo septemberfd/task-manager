@@ -186,6 +186,8 @@
   .tstar.on{color:var(--star); opacity:1}
   .ttext{flex:1; min-width:140px; outline:none; padding:3px 4px; border-radius:6px; font-size:14.5px; overflow-wrap:anywhere}
   .ttext:focus{background:var(--panel-3)}
+  .tlink{color:var(--accent-ink); text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px}
+  .ttext a{cursor:pointer}
   .todo.tdone .ttext{text-decoration:line-through; color:var(--faint)}
   .ddl-tag{font-size:10.5px; padding:3px 9px; border-radius:20px; white-space:nowrap; cursor:pointer; font-family:var(--mono); letter-spacing:.02em}
   .ddl-add{font-size:11px; color:var(--faint); cursor:pointer; padding:3px 8px; border-radius:7px; border:1px solid var(--line); opacity:0; transition:.13s; font-family:var(--mono)}
@@ -445,6 +447,12 @@ function markdown(src){
   }
   if(inList)html+='</ul>';return html;
 }
+/* render bare URLs and [text](url) as clickable links, for task titles */
+function linkify(s){return esc(s)
+  .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener" class="tlink">$1</a>')
+  .replace(/(^|[\s(])((https?:\/\/)[^\s<]+)/g,'$1<a href="$2" target="_blank" rel="noopener" class="tlink">$2</a>');}
+/* convert pasted rich HTML (with <a>) into plain text + [text](url) markdown */
+function htmlToMd(html){const d=document.createElement('div');d.innerHTML=html;d.querySelectorAll('a').forEach(a=>{const t=(a.textContent||'').trim();const u=a.getAttribute('href')||'';if(u&&/^https?:/i.test(u))a.replaceWith('['+t+']('+u+')');else a.replaceWith(t);});return (d.textContent||'').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim();}
 
 /* ---------------- state ---------------- */
 let state=seed();
@@ -545,7 +553,7 @@ function todoRowHTML(t,pid,showProj){
     <span class="drag" data-role="drag" title="Drag to reorder">${GRIP}</span>
     <input type="checkbox" class="cbx" data-role="check" ${t.done?'checked':''}>
     <button class="tstar ${t.star?'on':''}" data-role="tstar" title="Important (Focus)">${t.star?'★':'☆'}</button>
-    <div class="ttext" contenteditable="true" data-role="text">${esc(t.text)}</div>
+    <div class="ttext" contenteditable="true" data-role="text">${linkify(t.text)}</div>
     ${showProj?`<span class="proj-tag">${esc(showProj)}</span>`:''}
     <span class="ddl-slot" data-role="ddl-slot">${ddlChip(t)}</span>
     <span class="row-act">${moveSelectHTML(pid)}<button data-role="defer" title="Push 1 week">»</button><button class="tdel" data-role="del" title="Delete">×</button></span>
@@ -863,7 +871,14 @@ function bindTodoRow(row){
   const chk=row.querySelector('[data-role=check]');if(chk)chk.onchange=()=>{setDone(t,chk.checked);save();renderAll();};
   const st=row.querySelector('[data-role=tstar]');if(st)st.onclick=()=>{t.star=!t.star;save();renderAll();};
   const txt=row.querySelector('[data-role=text]');
-  if(txt){txt.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();txt.blur();}});txt.addEventListener('blur',()=>{const v=txt.innerText.trim();if(v!==t.text){t.text=v;save();}});}
+  if(txt){
+    txt.addEventListener('mousedown',e=>{if(e.target.closest('a'))e.preventDefault();});
+    txt.addEventListener('click',e=>{const a=e.target.closest('a');if(a){e.preventDefault();window.open(a.href,'_blank','noopener');}});
+    txt.addEventListener('focus',()=>{if(txt.querySelector('a'))txt.textContent=t.text;});
+    txt.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();txt.blur();}});
+    txt.addEventListener('paste',e=>{const html=e.clipboardData?e.clipboardData.getData('text/html'):'';if(html&&/<a[\s>]/i.test(html)){e.preventDefault();document.execCommand('insertText',false,htmlToMd(html));}});
+    txt.addEventListener('blur',()=>{if(!txt.querySelector('a')){const v=txt.innerText.trim();if(v!==t.text){t.text=v;save();}}txt.innerHTML=linkify(t.text);});
+  }
   const slot=row.querySelector('[data-role=ddl-slot]');const dbtn=row.querySelector('[data-role=ddl]');
   if(dbtn&&slot)dbtn.onclick=()=>editDate(slot,t,()=>renderAll());
   const defer=row.querySelector('[data-role=defer]');if(defer)defer.onclick=()=>{t.ddl=addDays(t.ddl,7);save();renderAll();toast('Pushed 1 week → '+fmtMD(t.ddl));};
@@ -923,6 +938,7 @@ function openNotes(obj,wrap){
   const edit=()=>{wrap.innerHTML=`<textarea class="notes-edit" data-role="nedit">${esc(obj.notes||'')}</textarea><div class="notes-hint">**bold** · - list · # heading · \`code\` · paste links. Click outside to save.</div>`;
     const ta=wrap.querySelector('[data-role=nedit]');ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);
     ta.addEventListener('input',()=>{obj.notes=ta.value;save();});
+    ta.addEventListener('paste',e=>{const html=e.clipboardData?e.clipboardData.getData('text/html'):'';if(html&&/<a[\s>]/i.test(html)){e.preventDefault();const md=htmlToMd(html);const s=ta.selectionStart,en=ta.selectionEnd;ta.value=ta.value.slice(0,s)+md+ta.value.slice(en);ta.selectionStart=ta.selectionEnd=s+md.length;obj.notes=ta.value;save();}});
     ta.addEventListener('blur',()=>{obj.notes=ta.value;save();render();});};
   (obj.notes&&obj.notes.trim())?render():edit();
 }
