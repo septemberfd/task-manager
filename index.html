@@ -474,9 +474,15 @@ const idb={
 async function permit(h){try{if(!h.queryPermission)return true;const o={mode:'readwrite'};if(await h.queryPermission(o)==='granted')return true;if(await h.requestPermission(o)==='granted')return true;}catch(e){}return false;}
 async function saveToFile(){if(!fileHandle)return;try{if(!await permit(fileHandle))return;const w=await fileHandle.createWritable();await w.write(JSON.stringify(state,null,2));await w.close();}catch(e){console.warn(e);}}
 async function bindFile(){
-  if(!window.showSaveFilePicker){alert('This browser has no file sync — use Chrome.');return;}
-  try{fileHandle=await window.showSaveFilePicker({suggestedName:'tasks.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
-    await idb.set('fileHandle',fileHandle);await saveToFile();updateStoragePill();toast('Synced to file');}catch(e){}
+  if(!window.showSaveFilePicker){alert('File sync needs Chrome or Edge on desktop.');return;}
+  let handle;
+  try{handle=await window.showSaveFilePicker({suggestedName:'tasks.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});}catch(e){return;}
+  fileHandle=handle;await idb.set('fileHandle',handle);
+  try{const file=await handle.getFile();const txt=(await file.text()).trim();
+    if(txt){state=migrate(JSON.parse(txt));save();renderAll();toast('Synced \u00b7 loaded your data from this file');}
+    else{await saveToFile();toast('Synced \u00b7 this file now holds your data');}
+  }catch(e){await saveToFile();toast('Synced to file');}
+  updateStoragePill();
 }
 async function restoreFile(){
   try{const h=await idb.get('fileHandle');if(!h)return false;fileHandle=h;
