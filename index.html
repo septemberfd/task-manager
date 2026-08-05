@@ -72,7 +72,7 @@
   .nav-item.active .ico{color:var(--accent); opacity:1}
   .nav-item .count{margin-left:auto; font-size:11px; color:var(--faint); font-family:var(--mono)}
   .nav-sep{height:1px; background:var(--line); margin:14px 8px}
-  .storage-pill{font-size:11px; color:var(--faint); padding:6px 12px; line-height:1.5}
+  .storage-pill{font-size:11.5px; color:var(--muted); padding:8px 12px; line-height:1.5; cursor:pointer; border-radius:8px} .storage-pill:hover{background:var(--panel-2); color:var(--ink)}
   .storage-pill b{color:var(--accent-ink); font-weight:500}
   .credit{display:block; padding:12px; font-size:11px; color:var(--faint); text-decoration:none; letter-spacing:.02em} .credit:hover{color:var(--accent-ink)}
 
@@ -489,7 +489,7 @@ async function restoreFile(){
     if(await permit(h)){const f=await h.getFile();const txt=await f.text();if(txt.trim()){state=migrate(JSON.parse(txt));return true;}}
   }catch(e){console.warn(e);}return false;
 }
-function updateStoragePill(){const el=document.getElementById('storagePill');if(el)el.innerHTML=fileHandle?'Synced to <b>'+esc(fileHandle.name)+'</b>':'Saved locally · click the cloud to sync across devices';}
+function updateStoragePill(){const el=document.getElementById('storagePill');if(el){el.innerHTML=fileHandle?'\u2713 Synced \u00b7 <b>'+esc(fileHandle.name)+'</b>':'\u21bb Sync tasks to a file \u2192';el.title=fileHandle?'Auto-saving to this file':'Save your tasks to a Drive file so they follow you across devices';el.onclick=bindFile;}}
 
 /* ---------------- helpers ---------------- */
 const findProj=id=>state.projects.find(p=>p.id===id);
