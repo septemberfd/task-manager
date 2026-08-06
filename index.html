@@ -10,10 +10,10 @@
 <style>
   :root{
     color-scheme:dark;
-    --bg:#0a0b0c; --panel:#131517; --panel-2:#1a1d20; --panel-3:#22262a;
-    --line:rgba(255,255,255,.06); --line-2:rgba(255,255,255,.11);
-    --ink:#eef0f1; --muted:#8a9098; --faint:#565c63;
-    --accent:#3ecf8e; --accent-ink:#57d69c; --accent-soft:rgba(62,207,142,.12);
+    --bg:#0d0f11; --sidebar:#15181b; --panel:#1c1f23; --panel-2:#23272c; --panel-3:#2d3238;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12);
+    --ink:#eef0f1; --muted:#949aa2; --faint:#646b74;
+    --accent:#3ecf8e; --accent-ink:#57d69c; --accent-soft:rgba(62,207,142,.13);
     --star:#e0b24a; --danger:#e8756b;
     --mono:'DM Mono',ui-monospace,Menlo,monospace;
     --display:'Space Grotesk','DM Sans',-apple-system,sans-serif;
@@ -21,10 +21,10 @@
   }
   html[data-theme="light"]{
     color-scheme:light;
-    --bg:#fbfbfa; --panel:#ffffff; --panel-2:#f5f6f5; --panel-3:#ecedec;
-    --line:rgba(20,22,24,.08); --line-2:rgba(20,22,24,.14);
-    --ink:#1b1e20; --muted:#6b7178; --faint:#a2a8ad;
-    --accent:#12a568; --accent-ink:#0f9560; --accent-soft:rgba(18,165,104,.1);
+    --bg:#f7f7f5; --sidebar:#eef0ec; --panel:#ffffff; --panel-2:#f2f3ef; --panel-3:#e8e9e4;
+    --line:rgba(20,22,24,.09); --line-2:rgba(20,22,24,.15);
+    --ink:#1b1e20; --muted:#666c73; --faint:#878e95;
+    --accent:#12a568; --accent-ink:#0f9560; --accent-soft:rgba(18,165,104,.11);
     --star:#c08a1e; --danger:#d0574c;
   }
   *{box-sizing:border-box}
@@ -68,7 +68,7 @@
   .hbtns{display:flex; gap:7px}
 
   .body{display:flex; flex:1; min-height:0}
-  aside{width:224px; flex:0 0 auto; border-right:1px solid var(--line); padding:18px 14px; overflow-y:auto; background:var(--bg)}
+  aside{width:224px; flex:0 0 auto; border-right:1px solid var(--line); padding:18px 14px; overflow-y:auto; background:var(--sidebar)}
   .nav-item{display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:10px; color:var(--muted); font-size:14px; user-select:none; margin-bottom:2px; transition:.13s}
   .nav-item:hover{background:var(--panel-2); color:var(--ink)}
   .nav-item.active{background:var(--panel-2); color:var(--ink); font-weight:550}
@@ -79,7 +79,7 @@
   .storage-pill{font-size:11.5px; color:var(--muted); padding:8px 12px; line-height:1.5; cursor:pointer; border-radius:8px} .storage-pill:hover{background:var(--panel-2); color:var(--ink)}
   .storage-pill b{color:var(--accent-ink); font-weight:500}
   .sync-actions{display:flex; gap:6px; flex-wrap:wrap}
-  .sync-actions button{font-family:inherit; font-size:11.5px; color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-radius:7px; padding:5px 9px; cursor:pointer}
+  .sync-actions button{font-family:inherit; font-size:11.5px; color:var(--ink); background:var(--panel-2); border:1px solid var(--line-2); border-radius:7px; padding:5px 9px; cursor:pointer}
   .sync-actions button[data-role=load]{color:var(--accent-ink); border-color:var(--accent-soft)}
   .sync-actions button:hover{background:var(--panel-3)}
   .sync-hint{font-size:10.5px; color:var(--faint); margin-top:6px; line-height:1.45}
@@ -466,7 +466,7 @@ function htmlToMd(html){const d=document.createElement('div');d.innerHTML=html;d
 /* ---------------- state ---------------- */
 let state=seed();
 let view='week', query='', sortBy='manual', filterStar=false;
-let tableStatus='all', tableSort='project', tableFrom='', tableTo='', tableGroup=false, tblCustom=false;
+let tableStatus='all', tableSort='ddl', tableFrom='', tableTo='', tableGroup=false, tblCustom=false;
 let projStatus='active', uncatCollapsed=true;
 let pendingFocus=null, pendingScroll=null;
 
@@ -609,7 +609,7 @@ function todoRowHTML(t,pid,showProj){
 }
 
 function projectCardHTML(p){
-  const openT=p.todos.filter(t=>!t.done), doneT=p.todos.filter(t=>t.done);
+  const openT=ddlSort(p.todos.filter(t=>!t.done)), doneT=p.todos.filter(t=>t.done);
   const total=p.todos.length, dn=doneT.length, pct=total?Math.round(dn/total*100):0;
   const col=!!p.collapsed, has=p.notes&&p.notes.trim();
   const et=effTarget(p);
@@ -635,7 +635,7 @@ function projectCardHTML(p){
 }
 
 function uncatCardHTML(){
-  const openT=state.quick.filter(t=>!t.done), doneT=state.quick.filter(t=>t.done);
+  const openT=ddlSort(state.quick.filter(t=>!t.done)), doneT=state.quick.filter(t=>t.done);
   const total=state.quick.length, dn=doneT.length, col=uncatCollapsed;
   return `<div class="card uncat ${col?'collapsed':''}" data-uncat="1">
     <div class="phead" data-role="head">
@@ -651,6 +651,8 @@ function uncatCardHTML(){
 }
 
 /* ---------------- filters/sort ---------------- */
+function byDdl(a,b){return (a.ddl||'9999-99-99').localeCompare(b.ddl||'9999-99-99');}
+function ddlSort(arr){return arr.slice().sort(byDdl);}
 function visibleProjects(list){
   let ps=list.slice();
   if(query)ps=ps.filter(p=>matchQ(p.title)||matchQ(p.notes)||p.todos.some(t=>matchQ(t.text)));
@@ -701,7 +703,7 @@ function emptyBox(b,t,s){return `<div class="empty"><div class="big">${b}</div><
 
 /* ---------------- Focus (starred, cross-time) ---------------- */
 function renderFocus(m){
-  const starTasks=openRows().filter(x=>x.t.star&&(!x.p||!x.p.archived)&&rowSearch(x));
+  const starTasks=openRows().filter(x=>x.t.star&&(!x.p||!x.p.archived)&&rowSearch(x)).sort((a,b)=>byDdl(a.t,b.t));
   const starProjects=state.projects.filter(p=>!p.archived&&p.star&&!projDone(p)).filter(p=>!query||matchQ(p.title)||p.todos.some(t=>matchQ(t.text)));
   let h=`<div class="view-head"><div><div class="view-title">Focus</div><div class="view-sub">Everything you starred as important — regardless of date. Tap the ☆ on any task or project to keep it here.</div></div></div>`;
   if(starTasks.length)h+=`<div class="sec-title">Starred tasks <span class="s-count">${starTasks.length}</span></div><div class="flat">`+starTasks.map(x=>todoRowHTML(x.t,x.p?x.p.id:'__quick__',x.p?x.p.title:'Uncategorized')).join('')+`</div>`;
