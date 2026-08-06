@@ -85,6 +85,8 @@
   .sync-hint{font-size:10.5px; color:var(--faint); margin-top:6px; line-height:1.45}
   .sync-sub{font-size:10.5px; color:var(--muted); margin-top:4px; cursor:pointer}
   .sync-sub:hover{color:var(--accent-ink)}
+  .sync-row{display:flex; gap:14px; margin-top:5px}
+  .sync-hint b{color:var(--muted); font-weight:600}
   .storage-pill:has(.sync-actions){cursor:default}
   .storage-pill:has(.sync-actions):hover{background:transparent}
   .credit{display:block; padding:12px; font-size:11px; color:var(--faint); text-decoration:none; letter-spacing:.02em} .credit:hover{color:var(--accent-ink)}
@@ -532,6 +534,14 @@ async function reloadFromBound(){
     state=migrate(JSON.parse(txt));save();renderAll();toast('Reloaded latest from your file');
   }catch(e){toast('Could not read the file');}
 }
+/* Explicit push: write current tasks to the bound file now (local -> Drive file). */
+async function pushNow(){
+  if(!fileHandle){createSyncFile();return;}
+  try{if(!await permit(fileHandle)){toast('Grant file permission to save');return;}
+    const w=await fileHandle.createWritable();await w.write(JSON.stringify(state,null,2));await w.close();
+    toast('Saved to your file');
+  }catch(e){toast('Could not write the file');}
+}
 async function restoreFile(){
   try{const h=await idb.get('fileHandle');if(!h)return false;fileHandle=h;
     if(await permit(h)){const f=await h.getFile();const txt=await f.text();if(txt.trim()){state=migrate(JSON.parse(txt));return true;}}
@@ -540,11 +550,12 @@ async function restoreFile(){
 function updateStoragePill(){
   const el=document.getElementById('storagePill');if(!el)return;
   if(fileHandle){
-    el.innerHTML='\u2713 Synced \u00b7 <b>'+esc(fileHandle.name)+'</b><div class="sync-sub" data-role="reload">\u21bb Reload latest from file</div>';
+    el.innerHTML='\u2713 Synced \u00b7 <b>'+esc(fileHandle.name)+'</b><div class="sync-row"><span class="sync-sub" data-role="reload">\u2193 Reload from file</span><span class="sync-sub" data-role="push">\u2191 Save to file now</span></div>';
     el.title='Auto-saving to this file';el.onclick=null;
     const rl=el.querySelector('[data-role=reload]');if(rl)rl.onclick=e=>{e.stopPropagation();reloadFromBound();};
+    const ps=el.querySelector('[data-role=push]');if(ps)ps.onclick=e=>{e.stopPropagation();pushNow();};
   }else{
-    el.innerHTML='<div class="sync-actions"><button type="button" data-role="load">\u2193 Load my sync file</button><button type="button" data-role="new">+ New sync file</button></div><div class="sync-hint">New device? Click Load and pick your Drive tasks.json \u2014 it only reads the file, never overwrites.</div>';
+    el.innerHTML='<div class="sync-actions"><button type="button" data-role="load">\u2193 Load from file</button><button type="button" data-role="new">\u2191 Save to a file</button></div><div class="sync-hint">Pick your Drive tasks.json. <b>Load</b> = read that file in (Drive \u2192 this device, never overwrites). <b>Save</b> = write this device\'s tasks to it (this device \u2192 Drive).</div>';
     el.title='';el.onclick=null;
     const lb=el.querySelector('[data-role=load]'),nb=el.querySelector('[data-role=new]');
     if(lb)lb.onclick=loadFromFile;if(nb)nb.onclick=createSyncFile;
