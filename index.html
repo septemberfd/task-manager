@@ -78,6 +78,15 @@
   .nav-sep{height:1px; background:var(--line); margin:14px 8px}
   .storage-pill{font-size:11.5px; color:var(--muted); padding:8px 12px; line-height:1.5; cursor:pointer; border-radius:8px} .storage-pill:hover{background:var(--panel-2); color:var(--ink)}
   .storage-pill b{color:var(--accent-ink); font-weight:500}
+  .sync-actions{display:flex; gap:6px; flex-wrap:wrap}
+  .sync-actions button{font-family:inherit; font-size:11.5px; color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-radius:7px; padding:5px 9px; cursor:pointer}
+  .sync-actions button[data-role=load]{color:var(--accent-ink); border-color:var(--accent-soft)}
+  .sync-actions button:hover{background:var(--panel-3)}
+  .sync-hint{font-size:10.5px; color:var(--faint); margin-top:6px; line-height:1.45}
+  .sync-sub{font-size:10.5px; color:var(--muted); margin-top:4px; cursor:pointer}
+  .sync-sub:hover{color:var(--accent-ink)}
+  .storage-pill:has(.sync-actions){cursor:default}
+  .storage-pill:has(.sync-actions):hover{background:transparent}
   .credit{display:block; padding:12px; font-size:11px; color:var(--faint); text-decoration:none; letter-spacing:.02em} .credit:hover{color:var(--accent-ink)}
 
   main{flex:1; min-width:0; overflow-y:auto; padding:30px 40px 100px}
@@ -485,23 +494,62 @@ const idb={
 };
 async function permit(h){try{if(!h.queryPermission)return true;const o={mode:'readwrite'};if(await h.queryPermission(o)==='granted')return true;if(await h.requestPermission(o)==='granted')return true;}catch(e){}return false;}
 async function saveToFile(){if(!fileHandle)return;try{if(!await permit(fileHandle))return;const w=await fileHandle.createWritable();await w.write(JSON.stringify(state,null,2));await w.close();}catch(e){console.warn(e);}}
-async function bindFile(){
+/* CONNECT to an existing sync file: reads + loads only. Never writes / never overwrites. */
+async function loadFromFile(){
+  if(!window.showOpenFilePicker){alert('File sync needs Chrome or Edge on desktop.');return;}
+  let handle;
+  try{[handle]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}],multiple:false});}catch(e){return;}
+  let loaded;
+  try{const file=await handle.getFile();const txt=(await file.text()).trim();
+    if(!txt){alert('That file looks empty. If it is still downloading from Google Drive, wait for the green check, then try again. To start a fresh sync file instead, use "New sync file".');return;}
+    loaded=migrate(JSON.parse(txt));
+  }catch(e){alert('Could not read that file. It may still be downloading from Drive, or it is not a Task Manager file. Nothing was changed.');return;}
+  fileHandle=handle;await idb.set('fileHandle',handle);try{await permit(handle);}catch(e){}
+  state=loaded;save();renderAll();updateStoragePill();
+  toast('Loaded your data \u00b7 this device now syncs to the file too');
+}
+/* CREATE / choose a file to hold this device's data. Writes \u2014 but guards against clobbering existing data. */
+async function createSyncFile(){
   if(!window.showSaveFilePicker){alert('File sync needs Chrome or Edge on desktop.');return;}
   let handle;
   try{handle=await window.showSaveFilePicker({suggestedName:'tasks.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});}catch(e){return;}
-  fileHandle=handle;await idb.set('fileHandle',handle);
   try{const file=await handle.getFile();const txt=(await file.text()).trim();
-    if(txt){state=migrate(JSON.parse(txt));save();renderAll();toast('Synced \u00b7 loaded your data from this file');}
-    else{await saveToFile();toast('Synced \u00b7 this file now holds your data');}
-  }catch(e){await saveToFile();toast('Synced to file');}
-  updateStoragePill();
+    if(txt){
+      if(confirm('This file already has tasks in it.\n\nOK = LOAD that file (keep its data).\nCancel = OVERWRITE it with what is on this device.')){
+        const loaded=migrate(JSON.parse(txt));fileHandle=handle;await idb.set('fileHandle',handle);try{await permit(handle);}catch(e){}
+        state=loaded;save();renderAll();updateStoragePill();toast('Loaded your data from this file');return;
+      }
+    }
+  }catch(e){}
+  fileHandle=handle;await idb.set('fileHandle',handle);await saveToFile();updateStoragePill();toast('This file now holds your data');
+}
+/* Pull the latest from the already-bound file (e.g. after editing on another device). Read-only load. */
+async function reloadFromBound(){
+  if(!fileHandle){loadFromFile();return;}
+  try{if(!await permit(fileHandle)){toast('Grant file permission to reload');return;}
+    const f=await fileHandle.getFile();const txt=(await f.text()).trim();
+    if(!txt){toast('The file is empty \u2014 nothing to load');return;}
+    state=migrate(JSON.parse(txt));save();renderAll();toast('Reloaded latest from your file');
+  }catch(e){toast('Could not read the file');}
 }
 async function restoreFile(){
   try{const h=await idb.get('fileHandle');if(!h)return false;fileHandle=h;
     if(await permit(h)){const f=await h.getFile();const txt=await f.text();if(txt.trim()){state=migrate(JSON.parse(txt));return true;}}
   }catch(e){console.warn(e);}return false;
 }
-function updateStoragePill(){const el=document.getElementById('storagePill');if(el){el.innerHTML=fileHandle?'\u2713 Synced \u00b7 <b>'+esc(fileHandle.name)+'</b>':'\u21bb Sync tasks to a file \u2192';el.title=fileHandle?'Auto-saving to this file':'Save your tasks to a Drive file so they follow you across devices';el.onclick=bindFile;}}
+function updateStoragePill(){
+  const el=document.getElementById('storagePill');if(!el)return;
+  if(fileHandle){
+    el.innerHTML='\u2713 Synced \u00b7 <b>'+esc(fileHandle.name)+'</b><div class="sync-sub" data-role="reload">\u21bb Reload latest from file</div>';
+    el.title='Auto-saving to this file';el.onclick=null;
+    const rl=el.querySelector('[data-role=reload]');if(rl)rl.onclick=e=>{e.stopPropagation();reloadFromBound();};
+  }else{
+    el.innerHTML='<div class="sync-actions"><button type="button" data-role="load">\u2193 Load my sync file</button><button type="button" data-role="new">+ New sync file</button></div><div class="sync-hint">New device? Click Load and pick your Drive tasks.json \u2014 it only reads the file, never overwrites.</div>';
+    el.title='';el.onclick=null;
+    const lb=el.querySelector('[data-role=load]'),nb=el.querySelector('[data-role=new]');
+    if(lb)lb.onclick=loadFromFile;if(nb)nb.onclick=createSyncFile;
+  }
+}
 
 /* ---------------- helpers ---------------- */
 const findProj=id=>state.projects.find(p=>p.id===id);
@@ -960,7 +1008,7 @@ function initHeader(){
   const setThemeIcon=()=>{themeBtn.innerHTML=document.documentElement.dataset.theme==='dark'?SUN:MOON;};
   setThemeIcon();bindBtn.innerHTML=CLOUD;
   themeBtn.onclick=()=>{applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');setThemeIcon();};
-  bindBtn.onclick=bindFile;
+  bindBtn.onclick=()=>fileHandle?reloadFromBound():loadFromFile();
 }
 async function boot(){
   try{const th=localStorage.getItem(THEME_KEY);if(th)document.documentElement.dataset.theme=th;}catch(e){}
